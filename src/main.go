@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -172,6 +173,12 @@ func resultToCard(result ScrapResult) trello.Card {
 	if result.CardElement == "description" {
 		card.Desc = result.Text
 	}
+	if result.CardElement == "attachment" {
+		attachment := trello.Attachment{
+			URL: result.Text,
+		}
+		card.Attachments = append(card.Attachments, &attachment)
+	}
 
 	for _, r := range result.ScrapResults {
 		subCard := resultToCard(r)
@@ -187,6 +194,10 @@ func resultToCard(result ScrapResult) trello.Card {
 				card.Desc += "\n"
 			}
 			card.Desc += subCard.Desc
+		}
+
+		if len(subCard.Attachments) > 0 {
+			card.Attachments = append(card.Attachments, subCard.Attachments...)
 		}
 	}
 	return card
@@ -211,6 +222,7 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) ScrapResult {
 	fmt.Printf("Do Scrap\n")
 
+	rand.Seed(time.Now().UnixNano())
 	var items []selenium.WebElement
 	var err error
 	if parent == nil {
@@ -258,6 +270,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 
 		if scrap.Follow {
 			fmt.Printf("follow : %s \n", itemResult.Text)
+			time.Sleep(time.Duration(1+rand.Intn(100)) * time.Second)
 			err = item.Click()
 			if err != nil {
 				panic(err)
@@ -277,6 +290,9 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 			}
 		}
 		result.ScrapResults = append(result.ScrapResults, itemResult)
+
+		fmt.Printf("Force exit \n")
+		break
 	}
 
 	return result
