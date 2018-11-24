@@ -163,13 +163,14 @@ func resultToCard(result ScrapResult) trello.Card {
 		Name: "",
 		Desc: "",
 	}
+	fmt.Printf("result : %s - %s\n", result.CardElement, result.Text)
 	if result.CardElement == "name" {
 		card.Name = result.Text
 	}
 	if result.CardElement == "description" {
 		card.Desc = result.Text
 	}
-	fmt.Printf("init card : %+v\n", card)
+	fmt.Printf("init card : %s - %s\n", card.Name, card.Desc)
 
 	for _, r := range result.ScrapResults {
 		subCard := resultToCard(r)
@@ -183,7 +184,7 @@ func resultToCard(result ScrapResult) trello.Card {
 		}
 		card.Desc += subCard.Desc
 	}
-	fmt.Printf("return card : %+v\n", card)
+	fmt.Printf("return card : %s - %s\n", card.Name, card.Desc)
 	return card
 }
 
@@ -238,6 +239,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 
 		if scrap.CardElement != "" {
 			result.Text = output
+			result.CardElement = scrap.CardElement
 		}
 
 		for _, subScrap := range scrap.Scraps {
