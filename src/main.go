@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/draganshadow/trello"
@@ -15,15 +14,32 @@ import (
 )
 
 type Config struct {
-	SeleniumHost             string `json:"seleniumHost"`
-	SeleniumPort             string `json:"seleniumPort"`
-	AppKey                   string `json:"appKey"`
-	Token                    string `json:"token"`
-	Member                   string `json:"member"`
-	URL                      string `json:"url"`
-	CSSSelector              string `json:"cssSelector"`
-	ResultBoardShortLink     string `json:"resultBoardShortLink"`
-	IncomingResultColumnName string `json:"incomingResultColumnName"`
+	SeleniumHost string   `json:"seleniumHost"`
+	SeleniumPort string   `json:"seleniumPort"`
+	AppKey       string   `json:"appKey"`
+	Token        string   `json:"token"`
+	Member       string   `json:"member"`
+	Searchs      []Search `json:"searchs"`
+}
+
+type Search struct {
+	StartURL                 string  `json:"startURL"`
+	ResultBoardShortLink     string  `json:"resultBoardShortLink"`
+	IncomingResultColumnName string  `json:"incomingResultColumnName"`
+	Scraps                   []Scrap `json:"scraps"`
+}
+
+type Scrap struct {
+	CSSSelector string  `json:"cssSelector"`
+	CardElement string  `json:"cardElement"`
+	DomField    string  `json:"domField"`
+	Scraps      []Scrap `json:"scraps"`
+}
+
+type ScrapResult struct {
+	CardElement  string
+	Text         string
+	ScrapResults []ScrapResult
 }
 
 func readConfig() Config {
@@ -51,7 +67,9 @@ func readConfig() Config {
 }
 
 func main() {
+	var err error
 	config := readConfig()
+
 	r := mux.NewRouter()
 	r.HandleFunc("/status/{service}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -62,9 +80,44 @@ func main() {
 
 	// http.ListenAndServe(":80", r)
 
-	client := trello.NewClient(config.AppKey, config.Token)
+	// Connect to the WebDriver instance running locally.
+	// f := firefox.Capabilities{}
+	// f.Binary = "vendor/github.com/tebeka/selenium/vendor/firefox-nightly/firefox"
+	// f.Log = &firefox.Log{
+	// 	Level: firefox.Error,
+	// }
+	caps := selenium.Capabilities{
+		"browserName": "firefox",
+		// "moz:firefoxOptions": f,
+	}
+	var wd selenium.WebDriver
+	for {
+		wd, err = selenium.NewRemote(caps, fmt.Sprintf("http://%s:%s/wd/hub", config.SeleniumHost, config.SeleniumPort))
 
-	resultBoard, err := client.GetBoard(config.ResultBoardShortLink, trello.Defaults())
+		if err != nil {
+			fmt.Println("Wait Selenium to be ready")
+			time.Sleep(10 * time.Second)
+		} else {
+			break
+		}
+	}
+	// if err != nil {
+	// 	panic(err)
+	// }
+	defer wd.Quit()
+
+	fmt.Println("Process Search List")
+	for _, s := range config.Searchs {
+		doSearch(wd, config, s)
+	}
+
+}
+
+func getTrelloBoardList(appKey string, token string, resultBoardShortLink string, incomingResultColumnName string) *trello.List {
+	fmt.Printf("Get Trello List : %s \n", incomingResultColumnName)
+	client := trello.NewClient(appKey, token)
+
+	resultBoard, err := client.GetBoard(resultBoardShortLink, trello.Defaults())
 	if err != nil {
 		// Handle error
 	}
@@ -75,7 +128,7 @@ func main() {
 		// Handle error
 	}
 	for _, rblist := range resultBoardLists {
-		if rblist.Name == config.IncomingResultColumnName {
+		if rblist.Name == incomingResultColumnName {
 			incomingResultList = rblist
 			rbcards, err := rblist.GetCards(trello.Defaults())
 			if err != nil {
@@ -91,57 +144,109 @@ func main() {
 			break
 		}
 	}
+	return incomingResultList
+}
 
-	// Connect to the WebDriver instance running locally.
-	// f := firefox.Capabilities{}
-	// f.Binary = "vendor/github.com/tebeka/selenium/vendor/firefox-nightly/firefox"
-	// f.Log = &firefox.Log{
-	// 	Level: firefox.Error,
-	// }
-	caps := selenium.Capabilities{
-		"browserName": "firefox",
-		// "moz:firefoxOptions": f,
-	}
-	wd, err := selenium.NewRemote(caps, fmt.Sprintf("http://%s:%s/wd/hub", config.SeleniumHost, config.SeleniumPort))
-	if err != nil {
-		panic(err)
-	}
-	defer wd.Quit()
+func exportResultToTrelloList(result ScrapResult, incomingResultList *trello.List) {
 
-	// Navigate to the simple playground interface.
-	if err := wd.Get(config.URL); err != nil {
-		panic(err)
-	}
-
-	// Wait for the program to finish running and get the output.
-	items, err := wd.FindElements(selenium.ByCSSSelector, config.CSSSelector)
-	if err != nil {
-		panic(err)
-	}
-
-	var itemOutput string
-	var output string
-	for {
-		for _, item := range items {
-			itemOutput, err = item.Text()
-			card := trello.Card{
-				Name: itemOutput,
-				Desc: "Description",
-			}
-			err := incomingResultList.AddCard(&card, trello.Defaults())
-			if err != nil {
-				//Handle
-			}
-			output += itemOutput
-		}
+	fmt.Printf("exportResultToTrelloList\n")
+	for _, r := range result.ScrapResults {
+		card := resultToCard(r)
+		err := incomingResultList.AddCard(&card, trello.Defaults())
 		if err != nil {
-			panic(err)
+			//Handle
 		}
-		if output != "Waiting for remote server..." {
-			break
+	}
+}
+
+func resultToCard(result ScrapResult) trello.Card {
+	fmt.Printf("resultToCard\n")
+
+	card := trello.Card{
+		Name: "",
+		Desc: "",
+	}
+	if result.CardElement == "name" {
+		card.Name = result.Text
+	}
+	if result.CardElement == "description" {
+		card.Desc = result.Text
+	}
+	fmt.Printf("init card : %+v\n", card)
+
+	for _, r := range result.ScrapResults {
+		subCard := resultToCard(r)
+		if card.Name != "" {
+			card.Name += " / "
 		}
-		time.Sleep(time.Millisecond * 100)
+		card.Name += subCard.Name
+
+		if card.Desc != "" {
+			card.Desc += "\n"
+		}
+		card.Desc += subCard.Desc
+	}
+	fmt.Printf("return card : %+v\n", card)
+	return card
+}
+
+func doSearch(wd selenium.WebDriver, config Config, search Search) {
+	fmt.Printf("Do Search\n")
+	incomingResultList := getTrelloBoardList(config.AppKey, config.Token, search.ResultBoardShortLink, search.IncomingResultColumnName)
+	if err := wd.Get(search.StartURL); err != nil {
+		panic(err)
+	}
+	for _, scrap := range search.Scraps {
+		result := doScrap(wd, nil, scrap)
+		for _, r := range result.ScrapResults {
+			exportResultToTrelloList(r, incomingResultList)
+		}
+	}
+}
+
+func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) ScrapResult {
+	fmt.Printf("Do Scrap\n")
+
+	var items []selenium.WebElement
+	var err error
+	if parent == nil {
+		fmt.Printf("Selector : %s \n", scrap.CSSSelector)
+		items, err = wd.FindElements(selenium.ByCSSSelector, scrap.CSSSelector)
+	} else {
+		fmt.Printf("SubSelector : %s \n", scrap.CSSSelector)
+		items, err = parent.FindElements(selenium.ByCSSSelector, scrap.CSSSelector)
 	}
 
-	fmt.Printf("%s", strings.Replace(output, "\n\n", "\n", -1))
+	if err != nil {
+		panic(err)
+	}
+
+	var result ScrapResult
+	for _, item := range items {
+		var output string
+
+		for {
+			output, err = item.Text()
+
+			fmt.Printf("output : %s \n", output)
+			if err != nil {
+				panic(err)
+			}
+			if output != "Waiting for remote server..." {
+				break
+			}
+			time.Sleep(time.Millisecond * 100)
+		}
+
+		if scrap.CardElement != "" {
+			result.Text = output
+		}
+
+		for _, subScrap := range scrap.Scraps {
+			subResult := doScrap(wd, item, subScrap)
+			result.ScrapResults = append(result.ScrapResults, subResult)
+		}
+	}
+
+	return result
 }
