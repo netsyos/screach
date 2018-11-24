@@ -196,6 +196,7 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 	}
 	for _, scrap := range search.Scraps {
 		result := doScrap(wd, nil, scrap)
+		fmt.Printf("doScrap result : %+v \n", result)
 		for _, r := range result.ScrapResults {
 			exportResultToTrelloList(r, incomingResultList)
 			time.Sleep(100 * time.Millisecond)
@@ -224,6 +225,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 	for _, item := range items {
 		var output string
 
+		var itemResult ScrapResult
 		for {
 			output, err = item.Text()
 
@@ -238,14 +240,15 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 		}
 
 		if scrap.CardElement != "" {
-			result.Text = output
-			result.CardElement = scrap.CardElement
+			itemResult.Text = output
+			itemResult.CardElement = scrap.CardElement
 		}
 
 		for _, subScrap := range scrap.Scraps {
 			subResult := doScrap(wd, item, subScrap)
-			result.ScrapResults = append(result.ScrapResults, subResult)
+			itemResult.ScrapResults = append(result.ScrapResults, subResult)
 		}
+		result.ScrapResults = append(result.ScrapResults, itemResult)
 	}
 
 	return result
