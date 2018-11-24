@@ -148,14 +148,11 @@ func getTrelloBoardList(appKey string, token string, resultBoardShortLink string
 }
 
 func exportResultToTrelloList(result ScrapResult, incomingResultList *trello.List) {
-
 	fmt.Printf("exportResultToTrelloList\n")
-	for _, r := range result.ScrapResults {
-		card := resultToCard(r)
-		err := incomingResultList.AddCard(&card, trello.Defaults())
-		if err != nil {
-			//Handle
-		}
+	card := resultToCard(result)
+	err := incomingResultList.AddCard(&card, trello.Defaults())
+	if err != nil {
+		//Handle
 	}
 }
 
@@ -200,6 +197,7 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 		result := doScrap(wd, nil, scrap)
 		for _, r := range result.ScrapResults {
 			exportResultToTrelloList(r, incomingResultList)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
