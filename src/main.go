@@ -246,7 +246,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 
 		for _, subScrap := range scrap.Scraps {
 			subResult := doScrap(wd, item, subScrap)
-			itemResult.ScrapResults = append(result.ScrapResults, subResult)
+			itemResult.ScrapResults = append(itemResult.ScrapResults, subResult)
 		}
 		result.ScrapResults = append(result.ScrapResults, itemResult)
 	}
