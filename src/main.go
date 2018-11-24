@@ -174,6 +174,7 @@ func resultToCard(result ScrapResult) trello.Card {
 		card.Desc = result.Text
 	}
 	if result.CardElement == "attachment" {
+		card.Desc += "Attachment : " + result.Text
 		attachment := trello.Attachment{
 			URL: result.Text,
 		}
@@ -242,23 +243,19 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 		var output string
 
 		var itemResult ScrapResult
-		for {
-			if scrap.DomField != "" {
-				fmt.Printf("scrap dom field : %s \n", scrap.DomField)
-				output, err = item.GetAttribute(scrap.DomField)
-			} else {
-				output, err = item.Text()
-			}
 
-			fmt.Printf("output : %s \n", output)
-			if err != nil {
-				panic(err)
-			}
-			if output != "Waiting for remote server..." {
-				break
-			}
-			time.Sleep(time.Millisecond * 100)
+		if scrap.DomField != "" {
+			fmt.Printf("scrap dom field : %s \n", scrap.DomField)
+			output, err = item.GetAttribute(scrap.DomField)
+		} else {
+			output, err = item.Text()
 		}
+
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Printf("output : %s \n", output)
 
 		if scrap.CardElement != "" {
 			if scrap.Prepend != "" {
@@ -271,7 +268,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 		if scrap.Follow {
 			fmt.Printf("follow : %s \n", itemResult.Text)
 			time.Sleep(time.Duration(1+rand.Intn(100)) * time.Second)
-			err = item.Click()
+			err = wd.Get(itemResult.Text)
 			if err != nil {
 				panic(err)
 			}
