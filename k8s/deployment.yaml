@@ -1,1 +1,46 @@
-#
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: screach
+spec:
+  schedule: "*/30 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: screach
+              image: netsyos/screach:latest
+              env:
+                - name: SCREACH_CONFIG
+                  value: "/data/container_config/config-screach/config.json"
+              volumeMounts:
+                - mountPath: /data/container_config
+                  name: screach-config
+          volumes:
+            - name: screach-config
+              gitRepo:
+                repository: "https://username:key@bitbucket.org/some_private_repos/config-screach.git"
+          restartPolicy: Never
+
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#  name: screach
+# spec:
+#  template:
+#    spec:
+#       containers:
+#         - name: screach
+#           image: netsyos/screach:latest
+#           env:
+#             - name: SCREACH_CONFIG
+#               value: "/data/container_config/config-screach/config.json"
+#           volumeMounts:
+#             - mountPath: /data/container_config
+#               name: screach-config
+#       volumes:
+#         - name: screach-config
+#           gitRepo:
+#             repository: "https://username:key@bitbucket.org/some_private_repos/config-screach.git"
+#       restartPolicy: Never

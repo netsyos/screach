@@ -14,12 +14,9 @@ import (
 	"github.com/tebeka/selenium"
 )
 
-const (
-	seleniumHost = "selenium"
-	seleniumPort = 4444
-)
-
 type Config struct {
+	SeleniumHost             string `json:"seleniumHost"`
+	SeleniumPort             string `json:"seleniumPort"`
 	AppKey                   string `json:"appKey"`
 	Token                    string `json:"token"`
 	Member                   string `json:"member"`
@@ -105,7 +102,7 @@ func main() {
 		"browserName": "firefox",
 		// "moz:firefoxOptions": f,
 	}
-	wd, err := selenium.NewRemote(caps, fmt.Sprintf("http://%s:%d/wd/hub", seleniumHost, seleniumPort))
+	wd, err := selenium.NewRemote(caps, fmt.Sprintf("http://%s:%s/wd/hub", config.SeleniumHost, config.SeleniumPort))
 	if err != nil {
 		panic(err)
 	}
