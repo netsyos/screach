@@ -170,7 +170,6 @@ func resultToCard(result ScrapResult) trello.Card {
 	if result.CardElement == "description" {
 		card.Desc = result.Text
 	}
-	fmt.Printf("init card : %s - %s\n", card.Name, card.Desc)
 
 	for _, r := range result.ScrapResults {
 		subCard := resultToCard(r)
@@ -188,7 +187,6 @@ func resultToCard(result ScrapResult) trello.Card {
 			card.Desc += subCard.Desc
 		}
 	}
-	fmt.Printf("return card : %s - %s\n", card.Name, card.Desc)
 	return card
 }
 
@@ -214,10 +212,10 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 	var items []selenium.WebElement
 	var err error
 	if parent == nil {
-		fmt.Printf("Selector : %s \n", scrap.CSSSelector)
+		fmt.Printf(" - Selector : %s \n", scrap.CSSSelector)
 		items, err = wd.FindElements(selenium.ByCSSSelector, scrap.CSSSelector)
 	} else {
-		fmt.Printf("SubSelector : %s \n", scrap.CSSSelector)
+		fmt.Printf(" - SubSelector : %s \n", scrap.CSSSelector)
 		items, err = parent.FindElements(selenium.ByCSSSelector, scrap.CSSSelector)
 	}
 
@@ -232,7 +230,8 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 		var itemResult ScrapResult
 		for {
 			if scrap.DomField != "" {
-				output, err = item.CSSProperty(scrap.DomField)
+				fmt.Printf("scrap dom field : %s \n", scrap.DomField)
+				output, err = item.GetAttribute(scrap.DomField)
 			} else {
 				output, err = item.Text()
 			}
