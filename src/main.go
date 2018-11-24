@@ -32,7 +32,9 @@ type Search struct {
 type Scrap struct {
 	CSSSelector string  `json:"cssSelector"`
 	CardElement string  `json:"cardElement"`
+	Prepend     string  `json:"prepend"`
 	DomField    string  `json:"domField"`
+	Follow      bool    `json:"follow"`
 	Scraps      []Scrap `json:"scraps"`
 }
 
@@ -247,13 +249,32 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 		}
 
 		if scrap.CardElement != "" {
-			itemResult.Text = output
+			if scrap.Prepend != "" {
+				itemResult.Text += scrap.Prepend
+			}
+			itemResult.Text += output
 			itemResult.CardElement = scrap.CardElement
 		}
 
-		for _, subScrap := range scrap.Scraps {
-			subResult := doScrap(wd, item, subScrap)
-			itemResult.ScrapResults = append(itemResult.ScrapResults, subResult)
+		if scrap.Follow {
+			fmt.Printf("follow : %s \n", itemResult.Text)
+			err = item.Click()
+			if err != nil {
+				panic(err)
+			}
+			for _, subScrap := range scrap.Scraps {
+				subResult := doScrap(wd, nil, subScrap)
+				itemResult.ScrapResults = append(itemResult.ScrapResults, subResult)
+			}
+			err = wd.Back()
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			for _, subScrap := range scrap.Scraps {
+				subResult := doScrap(wd, item, subScrap)
+				itemResult.ScrapResults = append(itemResult.ScrapResults, subResult)
+			}
 		}
 		result.ScrapResults = append(result.ScrapResults, itemResult)
 	}
