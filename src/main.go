@@ -15,15 +15,18 @@ import (
 )
 
 type Config struct {
-	SeleniumHost string   `json:"seleniumHost"`
-	SeleniumPort string   `json:"seleniumPort"`
-	AppKey       string   `json:"appKey"`
-	Token        string   `json:"token"`
-	Member       string   `json:"member"`
-	Searchs      []Search `json:"searchs"`
+	SeleniumHost           string   `json:"seleniumHost"`
+	SeleniumPort           string   `json:"seleniumPort"`
+	RandomSleepBeforeStart int      `json:"randomSleepBeforeStart"`
+	AppKey                 string   `json:"appKey"`
+	Token                  string   `json:"token"`
+	Member                 string   `json:"member"`
+	Templates              []Search `json:"templates"`
+	Searchs                []Search `json:"searchs"`
 }
 
 type Search struct {
+	Template                 string  `json:"template"`
 	StartURL                 string  `json:"startURL"`
 	ResultBoardShortLink     string  `json:"resultBoardShortLink"`
 	IncomingResultColumnName string  `json:"incomingResultColumnName"`
@@ -80,6 +83,12 @@ func main() {
 	var err error
 	config := readConfig()
 
+	rand.Seed(time.Now().UnixNano())
+	if config.RandomSleepBeforeStart > 0 {
+		secToWait := rand.Intn(config.RandomSleepBeforeStart)
+		fmt.Printf("Let's wait before start : %d\n", secToWait)
+		time.Sleep(time.Duration(secToWait) * time.Second)
+	}
 	r := mux.NewRouter()
 	r.HandleFunc("/status/{service}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -221,15 +230,34 @@ func resultToCard(result ScrapResult) trello.Card {
 
 func doSearch(wd selenium.WebDriver, config Config, search Search) {
 	fmt.Printf("Do Search\n")
+	var searchTemplate Search
+	if search.Template != "" {
+		for _, template := range config.Templates {
+			if template.Template == search.Template {
+				searchTemplate = template
+				break
+			}
+		}
+		if search.StartURL != "" {
+			searchTemplate.StartURL = search.StartURL
+		}
+		if search.ResultBoardShortLink != "" {
+			searchTemplate.ResultBoardShortLink = search.ResultBoardShortLink
+		}
+		if search.IncomingResultColumnName != "" {
+			searchTemplate.IncomingResultColumnName = search.IncomingResultColumnName
+		}
+		search = searchTemplate
+	}
 	incomingResultList := getTrelloBoardList(config.AppKey, config.Token, search.ResultBoardShortLink, search.IncomingResultColumnName)
-	mainUrl := search.StartURL
+	mainURL := search.StartURL
 	paginateNext := true
 	page := 1
 	for paginateNext {
 
 		fmt.Printf("Search page %d\n", page)
 		for _, scrap := range search.Scraps {
-			if err := wd.Get(mainUrl); err != nil {
+			if err := wd.Get(mainURL); err != nil {
 				panic(err)
 			}
 			result := doScrap(wd, nil, scrap)
@@ -240,17 +268,18 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 			}
 		}
 
-		if err := wd.Get(mainUrl); err != nil {
+		if err := wd.Get(mainURL); err != nil {
 			panic(err)
 		}
 		paginator := doScrap(wd, nil, search.Paginator)
 		if len(paginator.ScrapResults) == 1 {
-			mainUrl = paginator.ScrapResults[0].Text
-			fmt.Printf("next page %s\n", mainUrl)
+			mainURL = paginator.ScrapResults[0].Text
+			fmt.Printf("next page %s\n", mainURL)
 			page++
 		} else {
 			paginateNext = false
 		}
+		// paginateNext = false
 	}
 }
 
