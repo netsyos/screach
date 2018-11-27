@@ -1,13 +1,17 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
+
+	"encoding/hex"
 
 	"github.com/draganshadow/trello"
 	"github.com/gorilla/mux"
@@ -17,6 +21,7 @@ import (
 type Config struct {
 	SeleniumHost           string   `json:"seleniumHost"`
 	SeleniumPort           string   `json:"seleniumPort"`
+	TestMode               bool     `json:"testMode"`
 	RandomSleepBeforeStart int      `json:"randomSleepBeforeStart"`
 	AppKey                 string   `json:"appKey"`
 	Token                  string   `json:"token"`
@@ -47,6 +52,7 @@ type Scrap struct {
 }
 
 type ScrapResult struct {
+	UID          string
 	CardElement  string
 	Name         string
 	Text         string
@@ -133,14 +139,18 @@ func main() {
 
 }
 
-func getTrelloBoardList(appKey string, token string, resultBoardShortLink string, incomingResultColumnName string) *trello.List {
-	fmt.Printf("Get Trello List : %s \n", incomingResultColumnName)
+func getTrelloBoard(appKey string, token string, resultBoardShortLink string) *trello.Board {
 	client := trello.NewClient(appKey, token)
 
 	resultBoard, err := client.GetBoard(resultBoardShortLink, trello.Defaults())
 	if err != nil {
 		// Handle error
 	}
+	return resultBoard
+}
+func getTrelloBoardList(resultBoard *trello.Board, incomingResultColumnName string) *trello.List {
+	fmt.Printf("Get Trello List : %s \n", incomingResultColumnName)
+
 	fmt.Println("Result Board", resultBoard.Name)
 	resultBoardLists, err := resultBoard.GetLists(trello.Defaults())
 	var incomingResultList *trello.List
@@ -164,10 +174,11 @@ func getTrelloBoardList(appKey string, token string, resultBoardShortLink string
 			break
 		}
 	}
+	resultBoard.GetCards(trello.Defaults())
 	return incomingResultList
 }
 
-func exportResultToTrelloList(result ScrapResult, incomingResultList *trello.List) {
+func exportResultToTrelloList(result ScrapResult, resultBoard *trello.Board, incomingResultList *trello.List) {
 	// fmt.Printf("exportResultToTrelloList\n")
 	card := resultToCard(result)
 	err := incomingResultList.AddCard(&card, trello.Defaults())
@@ -181,7 +192,10 @@ func exportResultToTrelloList(result ScrapResult, incomingResultList *trello.Lis
 		//Handle
 	}
 }
-
+func GetMD5Hash(text string) string {
+	hash := md5.Sum([]byte(text))
+	return hex.EncodeToString(hash[:])
+}
 func resultToCard(result ScrapResult) trello.Card {
 	//fmt.Printf("resultToCard\n")
 
@@ -190,19 +204,24 @@ func resultToCard(result ScrapResult) trello.Card {
 		Desc: "",
 	}
 	// fmt.Printf("result : %s - %s\n", result.CardElement, result.Text)
-	if result.CardElement == "name" {
-		card.Name = result.Text
-	}
-	if result.CardElement == "description" {
-		card.Desc = result.Text
-	}
-	if result.CardElement == "attachment" {
-		card.Desc += "Attachment : " + result.Text
-		attachment := trello.Attachment{
-			Name: result.Name,
-			URL:  result.Text,
+	if result.Text != "" {
+		if result.CardElement == "name" {
+			card.Name = result.Text
 		}
-		card.Attachments = append(card.Attachments, &attachment)
+		if result.CardElement == "description" {
+			card.Desc = result.Text
+		}
+		if result.CardElement == "attachment" {
+			card.Desc += "Attachment : " + result.Text
+			attachment := trello.Attachment{
+				Name: result.Name,
+				URL:  result.Text,
+			}
+			card.Attachments = append(card.Attachments, &attachment)
+		}
+		if result.Name == "UID" {
+			card.Desc += "UID:" + GetMD5Hash(result.Text)
+		}
 	}
 
 	for _, r := range result.ScrapResults {
@@ -228,6 +247,17 @@ func resultToCard(result ScrapResult) trello.Card {
 	return card
 }
 
+func findCardByUID(cardList []*trello.Card, UID string) (*trello.Card, bool) {
+	for _, c := range cardList {
+
+		re := regexp.MustCompile("UID:" + UID)
+		if re.FindString(c.Desc) != "" {
+			return c, true
+		}
+	}
+	return nil, false
+}
+
 func doSearch(wd selenium.WebDriver, config Config, search Search) {
 	fmt.Printf("Do Search\n")
 	var searchTemplate Search
@@ -249,10 +279,18 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 		}
 		search = searchTemplate
 	}
-	incomingResultList := getTrelloBoardList(config.AppKey, config.Token, search.ResultBoardShortLink, search.IncomingResultColumnName)
+	resultBoard := getTrelloBoard(config.AppKey, config.Token, search.ResultBoardShortLink)
+	incomingResultList := getTrelloBoardList(resultBoard, search.IncomingResultColumnName)
+
+	existingCards, err := resultBoard.GetCards(trello.Defaults())
+	fmt.Printf("Board contain %d cards\n", len(existingCards))
+	if err != nil {
+		// Handle error
+	}
 	mainURL := search.StartURL
 	paginateNext := true
 	page := 1
+
 	for paginateNext {
 
 		fmt.Printf("Search page %d\n", page)
@@ -260,18 +298,26 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 			if err := wd.Get(mainURL); err != nil {
 				panic(err)
 			}
-			result := doScrap(wd, nil, scrap)
+			result := doScrap(wd, nil, scrap, config.TestMode)
 			// fmt.Printf("doScrap result : %+v \n", result)
 			for _, r := range result.ScrapResults {
-				exportResultToTrelloList(r, incomingResultList)
-				time.Sleep(100 * time.Millisecond)
+				_, found := findCardByUID(existingCards, r.UID)
+				if !found {
+
+					fmt.Printf("No card with UID %s card will be added\n", r.UID)
+					exportResultToTrelloList(r, resultBoard, incomingResultList)
+					time.Sleep(100 * time.Millisecond)
+				} else {
+
+					fmt.Printf("Ignoring existing card with UID %s\n", r.UID)
+				}
 			}
 		}
 
 		if err := wd.Get(mainURL); err != nil {
 			panic(err)
 		}
-		paginator := doScrap(wd, nil, search.Paginator)
+		paginator := doScrap(wd, nil, search.Paginator, config.TestMode)
 		if len(paginator.ScrapResults) == 1 {
 			mainURL = paginator.ScrapResults[0].Text
 			fmt.Printf("next page %s\n", mainURL)
@@ -279,11 +325,13 @@ func doSearch(wd selenium.WebDriver, config Config, search Search) {
 		} else {
 			paginateNext = false
 		}
-		// paginateNext = false
+		if config.TestMode {
+			paginateNext = false
+		}
 	}
 }
 
-func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) ScrapResult {
+func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap, testMode bool) ScrapResult {
 	fmt.Printf("Do Scrap\n")
 
 	rand.Seed(time.Now().UnixNano())
@@ -356,16 +404,25 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 				itemResult.CardElement = scrap.CardElement
 			}
 
+			if itemResult.Name == "UID" {
+				itemResult.UID = GetMD5Hash(itemResult.Text)
+				result.UID = itemResult.UID
+			}
+
 			if scrap.Follow {
 				itemResult.Follow = true
 				itemResult.Scrap = scrap
 				fmt.Println("Enable follow flag")
 			} else {
 				for _, subScrap := range scrap.Scraps {
-					subResult := doScrap(wd, item, subScrap)
+					subResult := doScrap(wd, item, subScrap, testMode)
 					if subResult.Follow {
 						followSub = true
 						fmt.Println("Subscrap has follow------------------")
+					}
+					if subResult.UID != "" {
+						itemResult.UID = subResult.UID
+						result.UID = itemResult.UID
 					}
 					itemResult.ScrapResults = append(itemResult.ScrapResults, subResult)
 				}
@@ -391,12 +448,12 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 				if itemSubResult.Follow {
 					fmt.Println("one sub with follow------------------")
 					if itemSubResult.Text != "" {
-						followResults := followLink(wd, itemSubResult)
+						followResults := followLink(wd, itemSubResult, testMode)
 						result.ScrapResults[itemResultIndex].ScrapResults[itemSubResultIndex].ScrapResults = append(itemSubResult.ScrapResults, followResults...)
 					} else {
 						if len(itemSubResult.ScrapResults) > 0 {
 							for iri, ir := range itemSubResult.ScrapResults {
-								followResults := followLink(wd, ir)
+								followResults := followLink(wd, ir, testMode)
 								fmt.Printf("followResults : %+v\n", followResults)
 								result.ScrapResults[itemResultIndex].ScrapResults[itemSubResultIndex].ScrapResults[iri].ScrapResults = append(ir.ScrapResults, followResults...)
 							}
@@ -404,15 +461,15 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 					}
 					i++
 				}
-				// if i >= 1 {
-				// 	fmt.Printf("Force exit \n")
-				// 	break
-				// }
+				if testMode && i >= 1 {
+					fmt.Printf("Test Mode On so only processing one child \n")
+					break
+				}
 			}
-			// if i >= 1 {
-			// 	fmt.Printf("Force exit \n")
-			// 	break
-			// }
+			if testMode && i >= 1 {
+				fmt.Printf("Test Mode On so only processing one child \n")
+				break
+			}
 		}
 		err = wd.Get(parentURL)
 		if err != nil {
@@ -422,7 +479,7 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap) Scr
 	return result
 }
 
-func followLink(wd selenium.WebDriver, itemResult ScrapResult) []ScrapResult {
+func followLink(wd selenium.WebDriver, itemResult ScrapResult, testMode bool) []ScrapResult {
 	fmt.Printf("follow : %s \n", itemResult.Text)
 	time.Sleep(time.Duration(1+rand.Intn(6)) * time.Second)
 	err := wd.Get(itemResult.Text)
@@ -432,7 +489,7 @@ func followLink(wd selenium.WebDriver, itemResult ScrapResult) []ScrapResult {
 	time.Sleep(10 * time.Second)
 	var followResult []ScrapResult
 	for _, subScrap := range itemResult.Scrap.Scraps {
-		subResult := doScrap(wd, nil, subScrap)
+		subResult := doScrap(wd, nil, subScrap, testMode)
 		followResult = append(followResult, subResult)
 	}
 	return followResult
