@@ -1,6 +1,4 @@
-language: go
-go:
-- 1.x
+language: minimal
 env:
   global:
   - COMMIT=${TRAVIS_COMMIT::8}
