@@ -73,7 +73,7 @@ func (t *Trello) clearList() {
 func (t *Trello) findCardByUID(UID string) (*trello.Card, bool) {
 	for _, c := range t.boardCards {
 
-		re := regexp.MustCompile("UID:" + UID)
+		re := regexp.MustCompile("UID\\s*:\\s*" + UID)
 		if re.FindString(c.Desc) != "" {
 			return c, true
 		}
