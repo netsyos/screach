@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/draganshadow/trello"
+	"github.com/kr/pretty"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -14,6 +15,7 @@ type ScrapResult struct {
 	CardElement  string
 	Name         string
 	Text         string
+	Location     bool
 	Follow       bool
 	Scrap        Scrap
 	ScrapResults []ScrapResult
@@ -32,9 +34,9 @@ type ScrapResultAttachmentData struct {
 	URL  string
 }
 
-func (result *ScrapResult) exportResultToTrelloList(trelloBoard *Trello) {
+func (result *ScrapResult) exportResultToTrelloList(trelloBoard *Trello, mapAPI *MapAPI) {
 	// fmt.Printf("exportResultToTrelloList\n")
-	card := result.resultToCard()
+	card := result.resultToCard(mapAPI)
 	err := trelloBoard.incomingResultList.AddCard(&card, trello.Defaults())
 	for i := len(card.Attachments) - 1; i >= 0; i-- {
 		fmt.Printf("Add attach\n")
@@ -47,7 +49,7 @@ func (result *ScrapResult) exportResultToTrelloList(trelloBoard *Trello) {
 	}
 }
 
-func (result *ScrapResult) resultToData() ScrapResultData {
+func (result *ScrapResult) resultToData(mapAPI *MapAPI) ScrapResultData {
 	rd := ScrapResultData{
 		Name: "",
 		UID:  "",
@@ -77,11 +79,34 @@ func (result *ScrapResult) resultToData() ScrapResultData {
 				rd.Data[strings.Title(result.Name)] = result.Text
 			}
 		}
+		if result.Location {
 
+			geocodeResult := mapAPI.GeoCode(result.Text)
+			if len(geocodeResult) > 0 {
+				rd.Data["Lat"] = geocodeResult[0].Geometry.Location.Lat
+				rd.Data["Lng"] = geocodeResult[0].Geometry.Location.Lng
+
+				if len(mapAPI.Destinations) > 0 {
+					times := make(map[string]string)
+					for _, dest := range mapAPI.Destinations {
+						tt := mapAPI.GetTravelTime(dest, result.Text)
+						if len(tt.Rows) > 0 {
+							d := tt.Rows[0].Elements[0].Duration
+							sec := int(d.Seconds())
+							hours := sec / 3600
+							min := (sec % 3600) / 60
+							times[dest] = fmt.Sprintf("%dh%02d", hours, min)
+						}
+					}
+					rd.Data["TravelTime"] = times
+					pretty.Println(times)
+				}
+			}
+		}
 	}
 
 	for _, r := range result.ScrapResults {
-		subData := r.resultToData()
+		subData := r.resultToData(mapAPI)
 		if subData.Name != "" {
 			if rd.Name != "" {
 				rd.Name += " / "
@@ -121,14 +146,14 @@ func (srd *ScrapResultData) getYAML() string {
 	return string(y)
 }
 
-func (result *ScrapResult) resultToCard() trello.Card {
+func (result *ScrapResult) resultToCard(mapAPI *MapAPI) trello.Card {
 
 	card := trello.Card{
 		Name: "",
 		Desc: "",
 	}
 
-	rd := result.resultToData()
+	rd := result.resultToData(mapAPI)
 
 	card.Name = rd.Name
 	card.Desc = rd.Description + "\n\n-----------------------------\n\n" + rd.getYAML()

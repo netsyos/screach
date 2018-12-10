@@ -20,6 +20,7 @@ type Search struct {
 type Scrap struct {
 	Name        string  `json:"name"`
 	FindBy      string  `json:"findBy"`
+	Location    bool    `json:"location"`
 	Selector    string  `json:"selector"`
 	CardElement string  `json:"cardElement"`
 	Prepend     string  `json:"prepend"`
@@ -52,12 +53,19 @@ func (search Search) DoSearch(wd selenium.WebDriver, config Config) {
 	}
 
 	trelloBoard := Trello{
-		appKey:                   config.AppKey,
-		token:                    config.Token,
+		appKey:                   config.Trello.AppKey,
+		token:                    config.Trello.Token,
 		resultBoardShortLink:     search.ResultBoardShortLink,
 		incomingResultColumnName: search.IncomingResultColumnName,
 	}
 	trelloBoard.Init()
+	trelloBoard.getCards()
+	mapAPI := MapAPI{
+		Key:          config.GoogleAPI.Key,
+		Country:      config.GoogleAPI.Country,
+		Destinations: config.GoogleAPI.Destinations,
+	}
+	mapAPI.Init()
 
 	mainURL := search.StartURL
 	paginateNext := true
@@ -77,7 +85,7 @@ func (search Search) DoSearch(wd selenium.WebDriver, config Config) {
 				if !found {
 
 					fmt.Printf("No card with UID %s card will be added\n", r.UID)
-					r.exportResultToTrelloList(&trelloBoard)
+					r.exportResultToTrelloList(&trelloBoard, &mapAPI)
 					time.Sleep(100 * time.Millisecond)
 				} else {
 
@@ -180,7 +188,10 @@ func doScrap(wd selenium.WebDriver, parent selenium.WebElement, scrap Scrap, tes
 				itemResult.UID = GetMD5Hash(itemResult.Text)
 				result.UID = itemResult.UID
 			}
-
+			if scrap.Location {
+				itemResult.Location = true
+				fmt.Println("Enable location flag")
+			}
 			if scrap.Follow {
 				itemResult.Follow = true
 				itemResult.Scrap = scrap

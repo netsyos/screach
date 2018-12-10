@@ -8,15 +8,26 @@ import (
 )
 
 type Config struct {
-	SeleniumHost           string   `json:"seleniumHost"`
-	SeleniumPort           string   `json:"seleniumPort"`
-	TestMode               bool     `json:"testMode"`
-	RandomSleepBeforeStart int      `json:"randomSleepBeforeStart"`
-	AppKey                 string   `json:"appKey"`
-	Token                  string   `json:"token"`
-	Member                 string   `json:"member"`
-	Templates              []Search `json:"templates"`
-	Searchs                []Search `json:"searchs"`
+	SeleniumHost           string          `json:"seleniumHost"`
+	SeleniumPort           string          `json:"seleniumPort"`
+	TestMode               bool            `json:"testMode"`
+	RandomSleepBeforeStart int             `json:"randomSleepBeforeStart"`
+	Trello                 TrelloConfig    `json:"trello"`
+	GoogleAPI              GoogleAPIConfig `json:"googleAPI"`
+	Templates              []Search        `json:"templates"`
+	Searchs                []Search        `json:"searchs"`
+}
+
+type TrelloConfig struct {
+	AppKey string `json:"appKey"`
+	Token  string `json:"token"`
+	Member string `json:"member"`
+}
+
+type GoogleAPIConfig struct {
+	Key          string   `json:"key"`
+	Country      string   `json:"country"`
+	Destinations []string `json:"destinations"`
 }
 
 func (c *Config) ReadConfig() {
