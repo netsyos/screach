@@ -36,14 +36,15 @@ type ScrapResultAttachmentData struct {
 
 func (result *ScrapResult) exportResultToTrelloList(trelloBoard *Trello, mapAPI *MapAPI) {
 	// fmt.Printf("exportResultToTrelloList\n")
-	card := result.resultToCard(mapAPI)
+	card, attachments := result.resultToCard(mapAPI)
 	err := trelloBoard.incomingResultList.AddCard(&card, trello.Defaults())
-	for i := len(card.Attachments) - 1; i >= 0; i-- {
+	for _, a := range attachments {
 		fmt.Printf("Add attach\n")
-		a := card.Attachments[i]
-		card.AttachURL(a.Name, a.URL)
+		err := card.AttachURL(a.Name, a.URL)
+		if err != nil {
+			//Handle
+		}
 	}
-
 	if err != nil {
 		//Handle
 	}
@@ -146,7 +147,7 @@ func (srd *ScrapResultData) getYAML() string {
 	return string(y)
 }
 
-func (result *ScrapResult) resultToCard(mapAPI *MapAPI) trello.Card {
+func (result *ScrapResult) resultToCard(mapAPI *MapAPI) (trello.Card, []trello.Attachment) {
 
 	card := trello.Card{
 		Name: "",
@@ -158,13 +159,15 @@ func (result *ScrapResult) resultToCard(mapAPI *MapAPI) trello.Card {
 	card.Name = rd.Name
 	card.Desc = rd.Description + "\n\n-----------------------------\n\n" + rd.getYAML()
 
+	var attachments []trello.Attachment
+
 	for _, a := range rd.Attachments {
 		attachment := trello.Attachment{
 			Name: a.Name,
 			URL:  a.URL,
 		}
-		card.Attachments = append(card.Attachments, &attachment)
+		attachments = append(attachments, attachment)
 	}
 
-	return card
+	return card, attachments
 }
