@@ -44,6 +44,12 @@ func (search Search) DoSearch(wd selenium.WebDriver, config Config) {
 				break
 			}
 		}
+		if search.Name != "" {
+			searchTemplate.Name = search.Name
+		}
+		if search.Slack != "" {
+			searchTemplate.Slack = search.Slack
+		}
 		if search.StartURL != "" {
 			searchTemplate.StartURL = search.StartURL
 		}
