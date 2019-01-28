@@ -1,16 +1,20 @@
 package lib
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/tebeka/selenium"
 )
 
 type Search struct {
+	Name                     string  `json:"name"`
 	Template                 string  `json:"template"`
 	StartURL                 string  `json:"startURL"`
+	Slack                    string  `json:"slack"`
 	ResultBoardShortLink     string  `json:"resultBoardShortLink"`
 	IncomingResultColumnName string  `json:"incomingResultColumnName"`
 	Paginator                Scrap   `json:"paginator"`
@@ -50,6 +54,20 @@ func (search Search) DoSearch(wd selenium.WebDriver, config Config) {
 			searchTemplate.IncomingResultColumnName = search.IncomingResultColumnName
 		}
 		search = searchTemplate
+	}
+
+	fmt.Printf("Screarch : %s\n", search.Name)
+	if search.Slack != "" {
+		var jsonStr = []byte(fmt.Sprintf(`{"text":"Screach : %s"}`, search.Name))
+		req, err := http.NewRequest("POST", search.Slack, bytes.NewBuffer(jsonStr))
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
 	}
 
 	trelloBoard := Trello{
