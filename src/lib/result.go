@@ -38,13 +38,17 @@ func (result *ScrapResult) exportResultToTrelloList(trelloBoard *Trello, mapAPI 
 	// fmt.Printf("exportResultToTrelloList\n")
 	card, attachments := result.resultToCard(mapAPI)
 	err := trelloBoard.incomingResultList.AddCard(&card, trello.Defaults())
-	for _, a := range attachments {
+
+	for i := len(attachments) - 1; i >= 0; i-- {
 		fmt.Printf("Add attach\n")
+		a := attachments[i]
 		err := card.AttachURL(a.Name, a.URL)
+
 		if err != nil {
 			//Handle
 		}
 	}
+
 	if err != nil {
 		//Handle
 	}
